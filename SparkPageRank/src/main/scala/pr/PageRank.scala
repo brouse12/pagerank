@@ -26,6 +26,10 @@ object PageRank {
     val conf = new SparkConf().setAppName("Page Rank")
     val sc = new SparkContext(conf)
 
+    // Hardcode values for alpha and 1 - alpha
+    val probLink = 0.85
+    val probJump = 0.15
+
     // Generate an edge set graph per to user input size, then partition it as an adjacency list
     // Generated graph includes dangling page links to dummy vertex
     val k = args(0).toInt
@@ -38,7 +42,8 @@ object PageRank {
     }
 
     // Assign an initial rank to each vertex and create dummy vertex 0
-    val initialRank: Double = 1.0 / (k * k)
+    val numVertices: Long = k * k
+    val initialRank: Double = 1.0 / numVertices
     val dummyVertex = sc.parallelize(Seq((0, 0.0))).partitionBy(graphPartitioner)
     var ranksRDD = graphRDD.mapValues(v => initialRank).union(dummyVertex)
 
@@ -47,6 +52,7 @@ object PageRank {
     logger.info("Ranks partitioner is: " + ranksRDD.partitioner.toString)
 
     // Run PageRank for as many iterations as specified by user
+    val probJumpToN = sc.broadcast[Double](probJump * (1.0 / numVertices))
     for (i <- 0 until args(1).toInt) {
       val contributions = graphRDD.join(ranksRDD).flatMap { case (vertex, (links, rank)) =>
         // Each vertex receives a 0.0 contribution, to ensure that vertices with no backlinks get a rank
@@ -57,15 +63,14 @@ object PageRank {
         .reduceByKey(graphPartitioner, _ + _)
 
       val danglingMass = contributions.lookup(0).head
-      ranksRDD = contributions.mapValues(v => v + danglingMass / (k * k))
-      logger.info("Ranks partitioner at iteration " + i + " is: " + ranksRDD.partitioner.toString)
+      ranksRDD = contributions.mapValues(v => v + danglingMass / numVertices)
+        .mapValues(v => probJumpToN.value + probLink * v)
     }
 
+    // Output results
     ranksRDD.saveAsTextFile(args(2))
-
     val total = ranksRDD.map({ case (k, v) => if (k == 0) (k, 0.0) else (k, v) }).values.sum
     logger.info("Total ranks after " + args(1).toInt + " iterations: " + total)
-    sc.stop()
   }
 
   /**
