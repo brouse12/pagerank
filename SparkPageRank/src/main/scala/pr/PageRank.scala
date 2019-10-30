@@ -1,6 +1,7 @@
 package pr
 
 import org.apache.log4j.LogManager
+import org.apache.spark.rdd.RDD
 import org.apache.spark.{HashPartitioner, SparkConf, SparkContext}
 
 /**
@@ -15,75 +16,79 @@ object PageRank {
    */
   def main(args: Array[String]) {
     val logger = LogManager.getRootLogger
-    if (args.length != 4) {
-      logger.error("Usage: <k> <iterations> <input dir> <output dir>")
+
+    if (args.length != 3) {
+      logger.error("Usage: <k> <iterations> <output dir>")
       System.exit(1)
     }
 
+    //TODO: w/ linear chains, nobody has extra vertices pointing to them? They'll be equally important?
     val conf = new SparkConf().setAppName("Page Rank")
     val sc = new SparkContext(conf)
 
-    //TODO: replace lines w/ auto generated graph
-    //TODO: w/ linear chains, nobody has extra vertices pointing to them? They'll be equally important?
-    val lines = sc.textFile(args(2))
-      .map(line => line.split(","))
-
-    //TODO: find better way of adding dangling pages to graph?
-
-    // Convert vertex pairs to an adjacency list, without checking for dangling pages
-    val graphRDDWithNoDPages = lines.map(edgeArray => (edgeArray(0), edgeArray(1)))
-      .distinct()
-      .groupByKey()
+    // Generate an edge set graph per to user input size, then partition it as an adjacency list
+    // Generated graph includes dangling page links to dummy vertex
+    val k = args(0).toInt
+    val graphRDD = generateGraph(k, sc).groupByKey().persist()
 
     // Find the adjacency list's partitioner
-    val graphPartitioner = graphRDDWithNoDPages.partitioner match {
+    val graphPartitioner = graphRDD.partitioner match {
       case Some(p) => p
-      case (None) => new HashPartitioner(graphRDDWithNoDPages.partitions.length)
+      case (None) => new HashPartitioner(graphRDD.partitions.length)
     }
 
-    // Identify dangling pages.  Use the graph partitioner to facilitate shuffle-free union.
-    val danglingPagesRDD = lines.map(edgeArray => (edgeArray(1), "0"))
-      .distinct()
-      .groupByKey(graphPartitioner)
-      .subtractByKey(graphRDDWithNoDPages)
-
-    // Add dangling pages and persist the final graph for future use.
-    val graphRDD = graphRDDWithNoDPages.union(danglingPagesRDD)
-      .persist()
-
     // Assign an initial rank to each vertex and create dummy vertex 0
-    val k = args(0).toDouble
     val initialRank: Double = 1.0 / (k * k)
-    var ranks = graphRDD.mapValues(v => initialRank)
-      .union(sc.parallelize(Seq(("0", 0.0))).partitionBy(graphPartitioner))
+    val dummyVertex = sc.parallelize(Seq((0, 0.0))).partitionBy(graphPartitioner)
+    var ranksRDD = graphRDD.mapValues(v => initialRank).union(dummyVertex)
 
-    //    val test = graphRDD.map(value => value)
-    //    println("Graph partitioner is: " + graphRDD.partitioner.toString)
-    //    println("Dangling partitioner is: " + danglingPagesRDD.partitioner.toString)
-    //    println("Test partitioner is: " + test.partitioner.toString)
-    //    println("Ranks partitioner is: " + ranks.partitioner.toString)
-    //graphRDD.foreach(tup => println(tup._1 + ": " + tup._2.toList.toString()))
+    // Debugging statements for checking partitioners
+    logger.info("Graph partitioner is: " + graphRDD.partitioner.toString)
+    logger.info("Ranks partitioner is: " + ranksRDD.partitioner.toString)
 
-    for (i <- 1 to args(1).toInt) {
-      val contributions = graphRDD.join(ranks).flatMap { case (vertex, (links, rank)) =>
+    // Run PageRank for as many iterations as specified by user
+    for (i <- 0 until args(1).toInt) {
+      val contributions = graphRDD.join(ranksRDD).flatMap { case (vertex, (links, rank)) =>
         // Each vertex receives a 0.0 contribution, to ensure that vertices with no backlinks get a rank
-        val zeroContribution = Iterable[(String, Double)]((vertex, 0.0))
+        val zeroContribution = Iterable[(Int, Double)]((vertex, 0.0))
         val size = links.size
         links.map(destination => (destination, rank / size)) ++ zeroContribution
       }
         .reduceByKey(graphPartitioner, _ + _)
 
-      val danglingMass = contributions.lookup("0").head
-      ranks = contributions.mapValues(v => v + danglingMass / (k * k))
+      val danglingMass = contributions.lookup(0).head
+      ranksRDD = contributions.mapValues(v => v + danglingMass / (k * k))
+      logger.info("Ranks partitioner at iteration " + i + " is: " + ranksRDD.partitioner.toString)
     }
 
-    val output = ranks.collect()
-    output.foreach(tup => println(s"${tup._1} has rank:  ${tup._2} ."))
+    ranksRDD.saveAsTextFile(args(2))
 
-    val total = ranks.map({ case (k, v) => if (k.equals("0")) (k, 0.0) else (k, v) }).values.sum
-    println("Total ranks = " + total + "\n")
-
+    val total = ranksRDD.map({ case (k, v) => if (k == 0) (k, 0.0) else (k, v) }).values.sum
+    logger.info("Total ranks after " + args(1).toInt + " iterations: " + total)
     sc.stop()
+  }
+
+  /**
+   * Generates an edge set graph consisting of k linear chains with k vertices. Dangling pages are
+   * linked to dummy node 0.
+   *
+   * @param k  the graph size parameter
+   * @param sc the SparkContext
+   * @return a (vertex, outlink) RDD
+   */
+  def generateGraph(k: Int, sc: SparkContext): RDD[(Int, Int)] = {
+    var counter = 0
+    var edgeSet = Seq[(Int, Int)]()
+
+    for (i <- 0 until k) {
+      counter += 1
+      for (j <- 0 until (k - 1)) {
+        edgeSet = edgeSet :+ (counter, counter + 1)
+        counter += 1
+      }
+      edgeSet = edgeSet :+ (counter, 0)
+    }
+    sc.parallelize(edgeSet)
   }
 
 
