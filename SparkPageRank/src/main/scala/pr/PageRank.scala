@@ -28,7 +28,9 @@ object PageRank {
     val lines = sc.textFile(args(2))
       .map(line => line.split(","))
 
-    // Convert vertex pairs to an adjacency list
+    //TODO: find better way of adding dangling pages to graph?
+
+    // Convert vertex pairs to an adjacency list, without checking for dangling pages
     val graphRDDWithNoDPages = lines.map(edgeArray => (edgeArray(0), edgeArray(1)))
       .distinct()
       .groupByKey()
@@ -45,14 +47,14 @@ object PageRank {
       .groupByKey(graphPartitioner)
       .subtractByKey(graphRDDWithNoDPages)
 
-    // Add dangling pages and cache the final graph for future use.
+    // Add dangling pages and persist the final graph for future use.
     val graphRDD = graphRDDWithNoDPages.union(danglingPagesRDD)
-      .cache()
-
+      .persist()
 
     // Assign an initial rank to each vertex and create dummy vertex 0
-
-    var ranks = graphRDD.mapValues(v => 1.0)
+    val k = args(0).toDouble
+    val initialRank: Double = 1.0 / (k * k)
+    var ranks = graphRDD.mapValues(v => initialRank)
       .union(sc.parallelize(Seq(("0", 0.0))).partitionBy(graphPartitioner))
 
     //    val test = graphRDD.map(value => value)
@@ -62,20 +64,25 @@ object PageRank {
     //    println("Ranks partitioner is: " + ranks.partitioner.toString)
     //graphRDD.foreach(tup => println(tup._1 + ": " + tup._2.toList.toString()))
 
-
-    //TODO: no one's pointing to 1,6,11,16,21 - should they still get the 0.15? We can add that processing at the end!
     for (i <- 1 to args(1).toInt) {
-      val contributions = graphRDD.join(ranks).values.flatMap { case (vertices, rank) =>
-        val size = vertices.size
-        vertices.map(vertex => (vertex, rank / size))
+      val contributions = graphRDD.join(ranks).flatMap { case (vertex, (links, rank)) =>
+        // Each vertex receives a 0.0 contribution, to ensure that vertices with no backlinks get a rank
+        val zeroContribution = Iterable[(String, Double)]((vertex, 0.0))
+        val size = links.size
+        links.map(destination => (destination, rank / size)) ++ zeroContribution
       }
-      ranks = contributions.reduceByKey(graphPartitioner, _ + _).mapValues(0.15 + 0.85 * _)
-      println("Ranks partitioner is: " + ranks.partitioner.toString)
+        .reduceByKey(graphPartitioner, _ + _)
+
+      val danglingMass = contributions.lookup("0").head
+      ranks = contributions.mapValues(v => v + danglingMass / (k * k))
     }
 
-    //val output = ranks.collect()
-    //output.foreach(tup => println(s"${tup._1} has rank:  ${tup._2} ."))
-    //ranks.saveAsTextFile(args(3))
+    val output = ranks.collect()
+    output.foreach(tup => println(s"${tup._1} has rank:  ${tup._2} ."))
+
+    val total = ranks.map({ case (k, v) => if (k.equals("0")) (k, 0.0) else (k, v) }).values.sum
+    println("Total ranks = " + total + "\n")
+
     sc.stop()
   }
 
