@@ -26,13 +26,15 @@ object PageRank {
     val conf = new SparkConf().setAppName("Page Rank")
     val sc = new SparkContext(conf)
 
-    // Hardcode values for alpha and 1 - alpha
-    val probLink = 0.85
-    val probJump = 0.15
+    // Set up some values
+    val probLink = 0.85 // alpha probability for linking to a page
+    val probJump = 0.15 // 1 - alpha probabilty for jumping to a page
+    val k = args(0).toInt
+    val numVertices: Long = k * k
+    val probJumpToN = sc.broadcast[Double](probJump * (1.0 / numVertices)) // Probability of jumping to a particular vertex
 
     // Generate an edge set graph per to user input size, then partition it as an adjacency list
     // Generated graph includes dangling page links to dummy vertex
-    val k = args(0).toInt
     val graphRDD = generateGraph(k, sc).groupByKey().persist()
 
     // Find the adjacency list's partitioner
@@ -42,7 +44,6 @@ object PageRank {
     }
 
     // Assign an initial rank to each vertex and create dummy vertex 0
-    val numVertices: Long = k * k
     val initialRank: Double = 1.0 / numVertices
     val dummyVertex = sc.parallelize(Seq((0, 0.0))).partitionBy(graphPartitioner)
     var ranksRDD = graphRDD.mapValues(v => initialRank).union(dummyVertex)
@@ -51,21 +52,49 @@ object PageRank {
     logger.info("Graph partitioner is: " + graphRDD.partitioner.toString)
     logger.info("Ranks partitioner is: " + ranksRDD.partitioner.toString)
 
+    //    // Run PageRank for as many iterations as specified by user
+    //    val probJumpToN = sc.broadcast[Double](probJump * (1.0 / numVertices))
+    //    for (i <- 0 until args(1).toInt) {
+    //      val contributions = graphRDD.join(ranksRDD).flatMap { case (vertex, (links, rank)) =>
+    //        // Each vertex receives a 0.0 contribution, to ensure that vertices with no backlinks get a rank
+    //        val zeroContribution = Iterable[(Int, Double)]((vertex, 0.0))
+    //        val size = links.size
+    //        links.map(destination => (destination, rank / size)) ++ zeroContribution
+    //      }
+    //        .reduceByKey(graphPartitioner, _ + _)
+    //
+    //      val danglingMass = contributions.lookup(0).head
+    //      ranksRDD = contributions.mapValues(v => v + danglingMass / numVertices)
+    //        .mapValues(v => probJumpToN.value + probLink * v)
+    //    }
+
     // Run PageRank for as many iterations as specified by user
-    val probJumpToN = sc.broadcast[Double](probJump * (1.0 / numVertices))
+    // Vertices that receive no contributions via inlinks are caught with a leftOuterJoin and assigned a rank
+    var danglingMass = 0.0
     for (i <- 0 until args(1).toInt) {
-      val contributions = graphRDD.join(ranksRDD).flatMap { case (vertex, (links, rank)) =>
-        // Each vertex receives a 0.0 contribution, to ensure that vertices with no backlinks get a rank
-        val zeroContribution = Iterable[(Int, Double)]((vertex, 0.0))
-        val size = links.size
-        links.map(destination => (destination, rank / size)) ++ zeroContribution
-      }
+      val rankWithNoInlink = probJumpToN.value + probLink * danglingMass
+
+      val contributions = graphRDD.leftOuterJoin(ranksRDD)
+        .flatMap { case (vertex, (links, optionalRank)) =>
+          val rank = optionalRank match {
+            case Some(r) => r
+            case None => rankWithNoInlink
+          }
+          val size = links.size
+          links.map(destination => (destination, rank / size))
+        }
         .reduceByKey(graphPartitioner, _ + _)
 
-      val danglingMass = contributions.lookup(0).head
-      ranksRDD = contributions.mapValues(v => v + danglingMass / numVertices)
-        .mapValues(v => probJumpToN.value + probLink * v)
+      danglingMass = contributions.lookup(0).head / numVertices
+      ranksRDD = contributions.mapValues(v => probJumpToN.value + probLink * (v + danglingMass))
     }
+
+    logger.info(ranksRDD.toDebugString)
+
+    // Add in vertices that receive no contributions via inlinks
+    val rankWithNoInlink = probJumpToN.value + probLink * danglingMass
+    val missingNodes = graphRDD.subtractByKey(ranksRDD).mapValues(v => rankWithNoInlink)
+    ranksRDD = ranksRDD.union(missingNodes)
 
     // Output results
     ranksRDD.saveAsTextFile(args(2))
