@@ -5,6 +5,7 @@ import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
@@ -24,34 +25,35 @@ public class MRPageRank extends Configured implements Tool {
   private static final Logger logger = LogManager.getLogger(MRPageRank.class);
 
   // Mapper class
-  public static class TokenizerMapper extends Mapper<Object, Text, Text, IntWritable> {
-    private final static IntWritable one = new IntWritable(1);
-    private final Text followee = new Text();
+  public static class PageRankMapper extends Mapper<Object, Text, IntWritable, Writable> {
+    private final static IntWritable vertexID = new IntWritable();
+    private final VertexData data = new VertexData();
 
 
     @Override
     public void map(final Object key, final Text input, final Context context)
             throws IOException, InterruptedException {
       String[] tokenizedInput = input.toString().split(",");
-      followee.set(tokenizedInput[1]);
-      context.write(followee, one);
+
+      vertexID.set(Integer.parseInt(tokenizedInput[0]));
+      data.parseFromCSV(tokenizedInput);
+      context.write(vertexID, data);
     }
   }
 
   // Reducer class
-  public static class IntSumReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
-    private final IntWritable result = new IntWritable();
-
+  public static class PageRankReducer extends Reducer<IntWritable, Writable, IntWritable, VertexData> {
 
     @Override
-    public void reduce(final Text key, final Iterable<IntWritable> values, final Context context)
+    public void reduce(final IntWritable vertexID, final Iterable<Writable> values, final Context context)
             throws IOException, InterruptedException {
-      int sum = 0;
-      for (final IntWritable val : values) {
-        sum += val.get();
+
+
+      for (final Writable data : values) {
+        context.write(vertexID, (VertexData) data);
       }
-      result.set(sum);
-      context.write(key, result);
+
+
     }
   }
 
@@ -60,16 +62,16 @@ public class MRPageRank extends Configured implements Tool {
     Job job = Job.getInstance();
     job.setJobName("Page Rank");
     job.setJarByClass(MRPageRank.class);
-    job.setMapperClass(MRPageRank.TokenizerMapper.class);
-    job.setReducerClass(MRPageRank.IntSumReducer.class);
-    job.setOutputKeyClass(Text.class); // Fix the output and input types (see chaining!)
-    job.setOutputValueClass(IntWritable.class);
+    job.setMapperClass(PageRankMapper.class);
+    job.setReducerClass(PageRankReducer.class);
+    job.setOutputKeyClass(IntWritable.class); // Fix the output and input types (see chaining!)
+    job.setOutputValueClass(VertexData.class);
 //    job.setInputFormatClass();
 //    job.setMapOutputKeyClass();
 //    job.setMapOutputValueClass();
 
     final Configuration jobConf = job.getConfiguration();
-    jobConf.set("mapreduce.output.textoutputformat.separator", ",\t");
+    jobConf.set("mapreduce.output.textoutputformat.separator", ",");
 
     FileInputFormat.addInputPath(job, new Path(args[1]));
     FileOutputFormat.setOutputPath(job, new Path(args[3])); // Fix the paths (see chaining!)
