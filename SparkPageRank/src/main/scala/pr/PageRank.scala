@@ -52,26 +52,11 @@ object PageRank {
     logger.info("Graph partitioner is: " + graphRDD.partitioner.toString)
     logger.info("Ranks partitioner is: " + ranksRDD.partitioner.toString)
 
-    //    // Run PageRank for as many iterations as specified by user
-    //    val probJumpToN = sc.broadcast[Double](probJump * (1.0 / numVertices))
-    //    for (i <- 0 until args(1).toInt) {
-    //      val contributions = graphRDD.join(ranksRDD).flatMap { case (vertex, (links, rank)) =>
-    //        // Each vertex receives a 0.0 contribution, to ensure that vertices with no backlinks get a rank
-    //        val zeroContribution = Iterable[(Int, Double)]((vertex, 0.0))
-    //        val size = links.size
-    //        links.map(destination => (destination, rank / size)) ++ zeroContribution
-    //      }
-    //        .reduceByKey(graphPartitioner, _ + _)
-    //
-    //      val danglingMass = contributions.lookup(0).head
-    //      ranksRDD = contributions.mapValues(v => v + danglingMass / numVertices)
-    //        .mapValues(v => probJumpToN.value + probLink * v)
-    //    }
-
     // Run PageRank for as many iterations as specified by user
     // Vertices that receive no contributions via inlinks are caught with a leftOuterJoin and assigned a rank
     var danglingMass = 0.0
     for (i <- 0 until args(1).toInt) {
+      logger.info("Testing intermediate rank caching. Iteration number: " + i)
       val rankWithNoInlink = probJumpToN.value + probLink * danglingMass
 
       val contributions = graphRDD.leftOuterJoin(ranksRDD)
@@ -86,6 +71,7 @@ object PageRank {
         .reduceByKey(graphPartitioner, _ + _)
 
       danglingMass = contributions.lookup(0).head / numVertices
+      //TODO: test speedup for using/not using cache/persist, for graphRDD and RanksRDD.
       ranksRDD = contributions.mapValues(v => probJumpToN.value + probLink * (v + danglingMass))
     }
 
@@ -98,7 +84,7 @@ object PageRank {
 
     // Output results
     ranksRDD.saveAsTextFile(args(2))
-    val total = ranksRDD.map({ case (k, v) => if (k == 0) (k, 0.0) else (k, v) }).values.sum
+    val total = ranksRDD.filter(vertexRank => vertexRank._1 != 0).values.sum
     logger.info("Total ranks after " + args(1).toInt + " iterations: " + total)
   }
 

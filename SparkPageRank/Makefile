@@ -9,7 +9,8 @@ jar.name=spark-hw4.jar
 maven.jar.name=spark-hw4-1.0.jar
 job.name=pr.PageRank
 local.master=local[4]
-local.input=input
+local.k = 100
+local.iterations = 1
 local.output=output
 # Pseudo-Cluster Execution
 hdfs.user.name=BrianRouse
@@ -36,7 +37,7 @@ clean-local-output:
 
 # Runs standalone
 local: jar clean-local-output
-	spark-submit --class ${job.name} --master ${local.master} --name "${app.name}" ${jar.name} ${local.input} ${local.output}
+	spark-submit --class ${job.name} --master ${local.master} --name "${app.name}" ${jar.name} ${local.k} ${local.iterations} ${local.output}
 
 # Start HDFS
 start-hdfs:
