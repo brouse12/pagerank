@@ -1,6 +1,5 @@
 package pr;
 
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
@@ -8,7 +7,6 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Counter;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
-import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.NLineInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.Tool;
@@ -16,7 +14,9 @@ import org.apache.hadoop.util.Tool;
 import java.io.IOException;
 
 /**
- *
+ * Map-only job to compute the final page ranks for a distributed run of the pageRank algorithm. The
+ * final iteration outputs page rank contributions and dangling page mass, but these still need to
+ * be factored together with the jump and link probabilities.
  */
 public class CleanupJob extends Configured implements Tool {
   private static final double JUMP_PROBABILITY = 0.15;
@@ -44,7 +44,7 @@ public class CleanupJob extends Configured implements Tool {
             throws IOException, InterruptedException {
       String[] tokenizedInput = input.toString().split(",");
 
-      // Emit graph structure with updated page ranks, based on last iteration's dangling mass
+      // Emit graph structure with updated page ranks, based on last iteration's dangling mass and contributions.
       vertexID.set(Integer.parseInt(tokenizedInput[0]));
       data.parseFromCSV(tokenizedInput);
       data.setPageRank(probJumpToThisPage + LINK_PROBABILITY * (data.getPageRank() + danglingMassAddToEachNode));
@@ -68,27 +68,26 @@ public class CleanupJob extends Configured implements Tool {
     job.setNumReduceTasks(0);
     job.setOutputKeyClass(IntWritable.class);
     job.setOutputValueClass(VertexObject.class);
+    job.getConfiguration().set("mapreduce.output.textoutputformat.separator", ",");
+    FileOutputFormat.setOutputPath(job, new Path(args[2]));
 
-    final Configuration jobConf = job.getConfiguration();
-    jobConf.set("mapreduce.output.textoutputformat.separator", ",");
-
+    // Ensure a minimum of 20 mappers.
+    int vertexCount = Integer.parseInt(args[0]);
     job.setInputFormatClass(NLineInputFormat.class);
     NLineInputFormat.addInputPath(job, new Path(args[1]));
-
-    int vertexCount = Integer.parseInt(args[0]);
     int recordsPerMapper = vertexCount / MINIMUM_MAPPERS;
     job.getConfiguration().setInt(NLineInputFormat.LINES_PER_MAP, recordsPerMapper);
 
     job.getConfiguration().setDouble("probJumpToPageN", JUMP_PROBABILITY / vertexCount);
     job.getConfiguration().setDouble("danglingMass", Double.parseDouble(args[4]) / vertexCount);
 
-    FileInputFormat.addInputPath(job, new Path(args[1]));
-    FileOutputFormat.setOutputPath(job, new Path(args[2]));
-
     int outcome = job.waitForCompletion(true) ? 0 : 1;
+    storeTotalPageRank(job);
+    return outcome;
+  }
+
+  private void storeTotalPageRank(Job job) throws IOException {
     Counter totalPageRankMass = job.getCounters().findCounter("Output Counters", "Total Page Rank");
     totalPageRank = (double) totalPageRankMass.getValue() / DOUBLE_TO_LONG_CONVERSION_FACTOR;
-
-    return outcome;
   }
 }

@@ -6,8 +6,8 @@ hadoop.root=/usr/local/hadoop-2.8.5
 jar.name=mr-hw4-1.0.jar
 jar.path=target/${jar.name}
 job.name=pr.MRPageRank
-job.vcount=25
-job.iterations=2
+job.vcount=100
+job.iterations=3
 local.input=input
 local.intermediate=intermediate
 local.output=output
@@ -22,10 +22,10 @@ aws.region=us-east-1
 aws.bucket.name=mapr-hw4
 aws.subnet.id=subnet-cb5c6be5
 aws.input=input
-aws.intermediate=intermediate
+aws.hdfs.intermediate=intermediate
 aws.output=output
 aws.log.dir=log
-aws.num.nodes=2
+aws.num.nodes=3
 aws.instance.type=m4.xlarge
 # -----------------------------------------------------------
 
@@ -119,11 +119,11 @@ upload-app-aws:
 # Main EMR launch.
 aws: jar upload-app-aws delete-output-aws
 	aws emr create-cluster \
-		--name "FollowerCount MR Cluster" \
+		--name "PageRank MR Cluster" \
 		--release-label ${aws.emr.release} \
 		--instance-groups '[{"InstanceCount":${aws.num.nodes},"InstanceGroupType":"CORE","InstanceType":"${aws.instance.type}"},{"InstanceCount":1,"InstanceGroupType":"MASTER","InstanceType":"${aws.instance.type}"}]' \
 	    --applications Name=Hadoop \
-	    --steps '[{"Args":["${job.name}","${job.vcount}","${job.iterations}","s3://${aws.bucket.name}/${aws.input}","s3://${aws.bucket.name}/${aws.intermediate}","s3://${aws.bucket.name}/${aws.output}"],"Type":"CUSTOM_JAR","Jar":"s3://${aws.bucket.name}/${jar.name}","ActionOnFailure":"TERMINATE_CLUSTER","Name":"Custom JAR"}]' \
+	    --steps '[{"Args":["${job.name}","${job.vcount}","${job.iterations}","s3://${aws.bucket.name}/${aws.input}","hdfs://${aws.hdfs.intermediate}","s3://${aws.bucket.name}/${aws.output}"],"Type":"CUSTOM_JAR","Jar":"s3://${aws.bucket.name}/${jar.name}","ActionOnFailure":"TERMINATE_CLUSTER","Name":"Custom JAR"}]' \
 		--log-uri s3://${aws.bucket.name}/${aws.log.dir} \
 		--use-default-roles \
 		--enable-debugging \

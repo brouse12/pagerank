@@ -156,7 +156,7 @@ public class MRPageRank extends Configured implements Tool {
       }
       jobArgs.incrementArgs(i, newIteration.danglingMass);
     }
-    
+
     CleanupJob finalIteration = new CleanupJob();
     try {
       ToolRunner.run(finalIteration, jobArgs.getCleanupArgs());

@@ -1,4 +1,4 @@
-#Makefile for Apache Spark HW 4 PageRan, program. Currently configured for local run only.
+#Makefile for Apache Spark HW 4 PageRank, program. Currently configured for local run only.
 
 # Customize these paths for your environment.
 # -----------------------------------------------------------
@@ -111,7 +111,7 @@ upload-app-aws:
 # Main EMR launch.
 aws: jar upload-app-aws delete-output-aws
 	aws emr create-cluster \
-		--name "Triangle Count Spark Cluster" \
+		--name "PageRank Spark Cluster" \
 		--release-label ${aws.emr.release} \
 		--instance-groups '[{"InstanceCount":${aws.num.nodes},"InstanceGroupType":"CORE","InstanceType":"${aws.instance.type}"},{"InstanceCount":1,"InstanceGroupType":"MASTER","InstanceType":"${aws.instance.type}"}]' \
 	    --applications Name=Hadoop Name=Spark \
