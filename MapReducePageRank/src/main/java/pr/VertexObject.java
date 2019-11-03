@@ -13,52 +13,79 @@ import java.util.List;
 /**
  * Custom MapReduce value type.  Stores a vertex's page rank and adjacency list.
  */
-public class VertexData implements Writable {
+public class VertexObject implements Writable {
   private double pageRank;
   private List<Integer> adjList;
 
-  // Default constructor
-  VertexData() {
+  VertexObject() {
     pageRank = 0.0;
-    adjList = new LinkedList<>();
+    adjList = null;
   }
 
-  public void set(double pageRank, List<Integer> adjList) {
+  public boolean isVertexData() {
+    return adjList != null;
+  }
+
+  public double getPageRank() {
+    return pageRank;
+  }
+
+  public List<Integer> getAdjList() {
+    return adjList;
+  }
+
+  public void setPageRank(double pageRank) {
+    this.pageRank = pageRank;
+  }
+
+  public void setVertexData(double pageRank, List<Integer> adjList) {
     this.pageRank = pageRank;
     this.adjList = adjList;
+  }
+
+  public void setContribution(double contribution) {
+    this.pageRank = contribution;
+  }
+
+  public double getContribution() {
+    return pageRank;
   }
 
   @Override
   public void write(DataOutput out) throws IOException {
     out.writeDouble(pageRank);
-    for (int edge : adjList) {
-      out.writeInt(edge);
+    if (isVertexData()) {
+      for (int edge : adjList) {
+        out.writeInt(edge);
+      }
     }
   }
 
   @Override
   public void readFields(DataInput in) throws IOException {
-    this.pageRank = in.readDouble();
-
-    this.adjList = new LinkedList<>();
+    adjList = null;
+    pageRank = in.readDouble();
+    List<Integer> edgeList = new LinkedList<>();
+    boolean isVertexData = false;
 
     try {
       while (true) {
-        this.adjList.add(in.readInt());
+        edgeList.add(in.readInt());
+        isVertexData = true;
       }
     } catch (EOFException e) {
       // Finished reading in all list data.
     }
-  }
-
-  public static VertexData read(DataInput in) throws IOException {
-    VertexData v = new VertexData();
-    v.readFields(in);
-    return v;
+    if (isVertexData) {
+      adjList = edgeList;
+    }
   }
 
   // Parses an input array in the form "vertex ID, page rank, edge 1, edge 2, ..." to new VertexData
   public void parseFromCSV(String[] record) throws IllegalArgumentException {
+    if (record == null) {
+      throw new IllegalArgumentException("Method must be passed a non-null String.");
+    }
     if (record.length < 1) {
       throw new IllegalArgumentException("Input record should contain at least a vertex ID and a pagerank value.");
     }
@@ -68,18 +95,22 @@ public class VertexData implements Writable {
     for (int i = 2; i < record.length; i++) {
       edgeList.add(Integer.parseInt(record[i]));
     }
-
-    set(pr, edgeList);
+    this.pageRank = pr;
+    this.adjList = edgeList;
   }
 
   @Override
   public String toString() {
-    StringBuilder output = new StringBuilder("" + pageRank);
-    for (int edge : adjList) {
-      output.append(",").append(edge);
+    StringBuilder output = new StringBuilder();
+    if (isVertexData()) {
+      output.append(pageRank);
+      for (int edge : adjList) {
+        output.append(",").append(edge);
+      }
     }
     return output.toString();
   }
+
 }
 
 
