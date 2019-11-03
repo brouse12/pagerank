@@ -7,7 +7,7 @@ Described in README.txt files included in Spark and MapReduce directories.
 
 # Build and Execution Steps
 
-1. Create an /input directory containing a test file with input data
+1. Create an /input directory containing a test file with input data (MapReduce program only - use GraphGenerator class)
 2. Use the Makefile provided in each project directory (modifying variables as needed):
 
 * Local standalone version:

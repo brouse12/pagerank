@@ -11,7 +11,12 @@ import java.util.LinkedList;
 import java.util.List;
 
 /**
- * Custom MapReduce value type.  Stores a vertex's page rank and adjacency list.
+ * Custom MapReduce value type.  Depending on methods called, stores either a vertex's page rank and
+ * adjacency list, or an edge's contribution value.  These separate concepts could be more elegantly
+ * represented with separate objects implementing the same interface, but MapReduce does not appear
+ * to support passing polymorphic objects between mappers and reducers.  This seems to be due to a
+ * Reducer optimization where the class in the input iterator is instantiated only once, then
+ * repeatedly overwritten via the readFields method.
  */
 public class VertexObject implements Writable {
   private double pageRank;
@@ -24,6 +29,13 @@ public class VertexObject implements Writable {
 
   public boolean isVertexData() {
     return adjList != null;
+  }
+
+  public boolean isDanglingPage() {
+    if (!isVertexData()) {
+      return false;
+    }
+    return adjList.get(0) == 0;
   }
 
   public double getPageRank() {
@@ -66,28 +78,28 @@ public class VertexObject implements Writable {
     adjList = null;
     pageRank = in.readDouble();
     List<Integer> edgeList = new LinkedList<>();
-    boolean isVertexData = false;
+    boolean edgeListExists = false;
 
     try {
       while (true) {
         edgeList.add(in.readInt());
-        isVertexData = true;
+        edgeListExists = true;
       }
     } catch (EOFException e) {
       // Finished reading in all list data.
     }
-    if (isVertexData) {
+    if (edgeListExists) {
       adjList = edgeList;
     }
   }
 
-  // Parses an input array in the form "vertex ID, page rank, edge 1, edge 2, ..." to new VertexData
+  // Parses an input array in the form "vertex ID, page rank, edge 1, edge 2, ..." to new VertexData.
   public void parseFromCSV(String[] record) throws IllegalArgumentException {
     if (record == null) {
       throw new IllegalArgumentException("Method must be passed a non-null String.");
     }
-    if (record.length < 1) {
-      throw new IllegalArgumentException("Input record should contain at least a vertex ID and a pagerank value.");
+    if (record.length < 3) {
+      throw new IllegalArgumentException("Input record format: vertexID,rank,edges...");
     }
 
     double pr = Double.parseDouble(record[1]);
@@ -108,6 +120,7 @@ public class VertexObject implements Writable {
         output.append(",").append(edge);
       }
     }
+    // This method outputs only empty strings for edge contributions.
     return output.toString();
   }
 

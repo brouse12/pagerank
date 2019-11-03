@@ -1,4 +1,4 @@
-Apache Spark Join Programs
+Apache Spark PageRank program.
 CS6240
 Fall 2019
 

@@ -1,4 +1,4 @@
-#Makefile for Apache Spark HW 4 PageRange programs
+#Makefile for Apache Spark HW 4 PageRan, program. Currently configured for local run only.
 
 # Customize these paths for your environment.
 # -----------------------------------------------------------

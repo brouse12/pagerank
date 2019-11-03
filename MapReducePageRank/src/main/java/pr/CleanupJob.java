@@ -9,6 +9,7 @@ import org.apache.hadoop.mapreduce.Counter;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.NLineInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.Tool;
 
@@ -22,6 +23,7 @@ public class CleanupJob extends Configured implements Tool {
   private static final double LINK_PROBABILITY = 0.85;
   private static final long DOUBLE_TO_LONG_CONVERSION_FACTOR = 1000000000;
   public double totalPageRank; // Used to get total final pageRank for debugging purposes.
+  private static final int MINIMUM_MAPPERS = 20;
 
 
   public static class CleanupMapper extends Mapper<Object, Text, IntWritable, VertexObject> {
@@ -70,7 +72,13 @@ public class CleanupJob extends Configured implements Tool {
     final Configuration jobConf = job.getConfiguration();
     jobConf.set("mapreduce.output.textoutputformat.separator", ",");
 
+    job.setInputFormatClass(NLineInputFormat.class);
+    NLineInputFormat.addInputPath(job, new Path(args[1]));
+
     int vertexCount = Integer.parseInt(args[0]);
+    int recordsPerMapper = vertexCount / MINIMUM_MAPPERS;
+    job.getConfiguration().setInt(NLineInputFormat.LINES_PER_MAP, recordsPerMapper);
+
     job.getConfiguration().setDouble("probJumpToPageN", JUMP_PROBABILITY / vertexCount);
     job.getConfiguration().setDouble("danglingMass", Double.parseDouble(args[4]) / vertexCount);
 

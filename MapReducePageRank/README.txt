@@ -1,4 +1,4 @@
-Hadoop MapReduce PageRank
+Hadoop MapReduce PageRank program.
 CS6240
 Fall 2019
 

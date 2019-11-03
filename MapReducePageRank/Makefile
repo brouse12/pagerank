@@ -6,12 +6,15 @@ hadoop.root=/usr/local/hadoop-2.8.5
 jar.name=mr-hw4-1.0.jar
 jar.path=target/${jar.name}
 job.name=pr.MRPageRank
+job.vcount=25
+job.iterations=2
 local.input=input
 local.intermediate=intermediate
 local.output=output
 # Pseudo-Cluster Execution
 hdfs.user.name=BrianRouse
 hdfs.input=input
+hdfs.intermediate=intermediate
 hdfs.output=output
 # AWS EMR Execution
 aws.emr.release=emr-5.26.0
@@ -19,9 +22,10 @@ aws.region=us-east-1
 aws.bucket.name=mapr-hw4
 aws.subnet.id=subnet-cb5c6be5
 aws.input=input
+aws.intermediate=intermediate
 aws.output=output
 aws.log.dir=log
-aws.num.nodes=5
+aws.num.nodes=2
 aws.instance.type=m4.xlarge
 # -----------------------------------------------------------
 
@@ -37,7 +41,7 @@ clean-local-output:
 # Make sure Hadoop  is set up (in /etc/hadoop files) for standalone operation (not pseudo-cluster).
 # https://hadoop.apache.org/docs/current/hadoop-project-dist/hadoop-common/SingleCluster.html#Standalone_Operation
 local: jar clean-local-output
-	${hadoop.root}/bin/hadoop jar ${jar.path} ${job.name} ${local.input} ${local.output}
+	${hadoop.root}/bin/hadoop jar ${jar.path} ${job.name} ${job.vcount} ${job.iterations} ${local.input} ${local.intermediate} ${local.output}
 
 # Start HDFS
 start-hdfs:
@@ -86,12 +90,14 @@ download-output-hdfs: clean-local-output
 # Make sure Hadoop  is set up (in /etc/hadoop files) for pseudo-clustered operation (not standalone).
 # https://hadoop.apache.org/docs/current/hadoop-project-dist/hadoop-common/SingleCluster.html#Pseudo-Distributed_Operation
 pseudo: jar stop-yarn format-hdfs init-hdfs upload-input-hdfs start-yarn clean-local-output 
-	${hadoop.root}/bin/hadoop jar ${jar.path} ${job.name} ${hdfs.input} ${hdfs.output}
+	${hadoop.root}/bin/hadoop jar ${jar.path} ${job.name} ${job.vcount} ${job.iterations} ${hdfs.input} ${hdfs.intermediate} ${hdfs.output}
+
 	make download-output-hdfs
 
 # Runs pseudo-clustered (quickie).
 pseudoq: jar clean-local-output clean-hdfs-output 
-	${hadoop.root}/bin/hadoop jar ${jar.path} ${job.name} ${hdfs.input} ${hdfs.output}
+	${hadoop.root}/bin/hadoop jar ${jar.path} ${job.name} ${job.vcount} ${job.iterations} ${hdfs.input} ${hdfs.intermediate} ${hdfs.output}
+
 	make download-output-hdfs
 
 # Create S3 bucket.
@@ -117,7 +123,7 @@ aws: jar upload-app-aws delete-output-aws
 		--release-label ${aws.emr.release} \
 		--instance-groups '[{"InstanceCount":${aws.num.nodes},"InstanceGroupType":"CORE","InstanceType":"${aws.instance.type}"},{"InstanceCount":1,"InstanceGroupType":"MASTER","InstanceType":"${aws.instance.type}"}]' \
 	    --applications Name=Hadoop \
-	    --steps '[{"Args":["${job.name}","s3://${aws.bucket.name}/${aws.input}","s3://${aws.bucket.name}/${aws.output}"],"Type":"CUSTOM_JAR","Jar":"s3://${aws.bucket.name}/${jar.name}","ActionOnFailure":"TERMINATE_CLUSTER","Name":"Custom JAR"}]' \
+	    --steps '[{"Args":["${job.name}","${job.vcount}","${job.iterations}","s3://${aws.bucket.name}/${aws.input}","s3://${aws.bucket.name}/${aws.intermediate}","s3://${aws.bucket.name}/${aws.output}"],"Type":"CUSTOM_JAR","Jar":"s3://${aws.bucket.name}/${jar.name}","ActionOnFailure":"TERMINATE_CLUSTER","Name":"Custom JAR"}]' \
 		--log-uri s3://${aws.bucket.name}/${aws.log.dir} \
 		--use-default-roles \
 		--enable-debugging \

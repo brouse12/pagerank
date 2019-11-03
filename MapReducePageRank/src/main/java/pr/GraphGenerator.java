@@ -7,10 +7,15 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Generates a file containing records in the form "vertexID,rank,edges...".  User specifies the
+ * initial page rank for each node, the file output directory/name, and graph size k.  The graph
+ * will be k chains of k vertices, ensuring dangling pages and pages with no inlinks for testing
+ * purposes.
+ */
 public class GraphGenerator {
 
   public static void main(final String[] args) {
-
 
     if (args.length != 3) {
       throw new IllegalArgumentException("Usage: <k> <page rank> <output directory>");
@@ -19,7 +24,9 @@ public class GraphGenerator {
     try (Writer writer = new BufferedWriter(new OutputStreamWriter(
             new FileOutputStream(args[2]), StandardCharsets.UTF_8))) {
 
-      generateGraph(Integer.parseInt(args[0]), Double.parseDouble(args[1]), writer);
+      int k = Integer.parseInt(args[0]);
+      double initialPageRank = Double.parseDouble(args[1]);
+      generateGraph(k, initialPageRank, writer);
 
     } catch (IOException e) {
       System.err.println(e.getMessage());
@@ -39,5 +46,4 @@ public class GraphGenerator {
       counter++;
     }
   }
-
 }
