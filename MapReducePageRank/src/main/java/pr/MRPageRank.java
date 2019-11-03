@@ -9,7 +9,7 @@ import org.apache.hadoop.mapreduce.Counter;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
-import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.NLineInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
@@ -26,6 +26,7 @@ public class MRPageRank extends Configured implements Tool {
   private static final double JUMP_PROBABILITY = 0.15;
   private static final double LINK_PROBABILITY = 0.85;
   private static final long DOUBLE_TO_LONG_CONVERSION_FACTOR = 1000000000;
+  private static final int MINIMUM_MAPPERS = 20;
   public double danglingMass; // Used to pass d-mass from iteration i to (i + 1)
 
   // Mapper class
@@ -114,12 +115,19 @@ public class MRPageRank extends Configured implements Tool {
     final Configuration jobConf = job.getConfiguration();
     jobConf.set("mapreduce.output.textoutputformat.separator", ",");
 
+    job.setInputFormatClass(NLineInputFormat.class);
+    NLineInputFormat.addInputPath(job, new Path(args[1]));
+
     int vertexCount = Integer.parseInt(args[0]);
+
+    int recordsPerMapper = vertexCount / MINIMUM_MAPPERS;
+
+    job.getConfiguration().setInt(NLineInputFormat.LINES_PER_MAP, recordsPerMapper);
+
     job.getConfiguration().setDouble("probJumpToPageN", JUMP_PROBABILITY / vertexCount);
     job.getConfiguration().setDouble("danglingMass", Double.parseDouble(args[4]) / vertexCount);
     job.getConfiguration().setBoolean("isFirstIteration", args[3].equals("first"));
 
-    FileInputFormat.addInputPath(job, new Path(args[1]));
     FileOutputFormat.setOutputPath(job, new Path(args[2]));
 
     int outcome = job.waitForCompletion(true) ? 0 : 1;
