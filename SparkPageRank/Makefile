@@ -10,7 +10,7 @@ maven.jar.name=spark-hw4-1.0.jar
 job.name=pr.PageRank
 local.master=local[4]
 local.k = 100
-local.iterations = 1
+local.iterations = 3
 local.output=output
 # Pseudo-Cluster Execution
 hdfs.user.name=BrianRouse

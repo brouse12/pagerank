@@ -38,7 +38,7 @@ object PageRank {
 
     // Generate an edge set graph per to user input size, then partition it as an adjacency list
     // Generated graph includes dangling page links to dummy vertex.
-    val graphRDD = generateGraph(k, sc).groupByKey().persist()
+    val graphRDD = generateGraph(k, sc).groupByKey().persist();
 
     // Find the adjacency list's partitioner.
     val graphPartitioner = graphRDD.partitioner match {
@@ -74,7 +74,6 @@ object PageRank {
         .reduceByKey(graphPartitioner, _ + _)
 
       danglingMass = contributions.lookup(0).head / numVertices
-      //TODO: test speedup for using/not using cache/persist, for graphRDD and RanksRDD.
       ranksRDD = contributions.mapValues(v => probJumpToPage.value + LinkProbability * (v + danglingMass))
     }
 

@@ -6,8 +6,8 @@ hadoop.root=/usr/local/hadoop-2.8.5
 jar.name=mr-hw4-1.0.jar
 jar.path=target/${jar.name}
 job.name=pr.MRPageRank
-job.vcount=100
-job.iterations=3
+job.vcount=1000000
+job.iterations=10
 local.input=input
 local.intermediate=intermediate
 local.output=output
@@ -22,10 +22,10 @@ aws.region=us-east-1
 aws.bucket.name=mapr-hw4
 aws.subnet.id=subnet-cb5c6be5
 aws.input=input
-aws.hdfs.intermediate=intermediate
+aws.hdfs.intermediate=/data/intermediate
 aws.output=output
 aws.log.dir=log
-aws.num.nodes=3
+aws.num.nodes=8
 aws.instance.type=m4.xlarge
 # -----------------------------------------------------------
 
