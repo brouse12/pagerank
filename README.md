@@ -1,5 +1,5 @@
 # PageRank in Hadoop MapReduce and Apache Spark
-Simple PageRank in MapReduce (Java) and Spark (Scala) with dangling page handling and automatic graph generation.
+Simple PageRank in MapReduce (Java) and Spark (Scala) with dangling page handling and synthetic graph generation.
 
 # Environment and Software Versions
 
