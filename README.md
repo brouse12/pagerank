@@ -1,5 +1,5 @@
-# CS 6240 Assignment 4
-Brian Rouse
+# PageRank in Hadoop MapReduce and Apache Spark
+Simple PageRank in MapReduce (Java) and Spark (Scala) with dangling page handling and automatic graph generation.
 
 # Environment and Software Versions
 
